@@ -1,0 +1,47 @@
+# Generated README is built from this file. Edit it, not README.md.
+
+[example]
+title   = "Course 5 demos — Agentic Patterns: Parallel Subagent ML with Rust"
+summary = "Recordable demos: Rust programs with pinned inputs, machine-checked assertions and a receipt"
+
+[[files]]
+path = "Cargo.toml"
+
+[[files]]
+path = "demo-kit"
+
+[[files]]
+path = "xtask"
+
+[[files]]
+path = "fixtures"
+
+[[files]]
+path = "d01-serve-hello"
+
+[[files]]
+path = "d02-cold-vs-resident"
+
+[[files]]
+path = "d04-json-verdict"
+
+[[files]]
+path = "d07-quorum"
+
+[[files]]
+path = "d08-planted-defect"
+
+[[files]]
+path = "d09-parity-receipt"
+
+[[files]]
+path = "d11-refusals"
+
+[[files]]
+path = "d13-reducer"
+
+[[files]]
+path = "d15-agy-teamwork"
+
+[[files]]
+path = "d16-kaizen"
