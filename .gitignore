@@ -1,0 +1,44 @@
+# Nothing rendered, recorded or compiled belongs in a public course repository.
+#
+# THE TWO CATEGORIES THAT MUST NEVER LAND HERE, and why this file leads with
+# them: course METADATA lives in the private catalogue, and course MEDIA lives
+# on the NAS. On 2026-08-27 transcripts, an outline, course metadata and a
+# design prompt were committed to a public specialization repo. The three-home
+# split exists because of that incident, and these patterns are the mechanical
+# half of it.
+
+# Course media and its staging root (a symlink to the NAS on a build host).
+coursera-assets
+coursera-assets/
+rendered/
+*.mp4
+*.mov
+*.wav
+*.srt
+*.srt.lock
+
+# Course metadata -- belongs in the private catalogue, never here.
+*.course.yaml
+*-narration-script.md
+*.script.md
+*.quorum.json
+*.manifest.yaml
+*.edl.json
+
+# Rust build output
+target/
+**/target/
+*.rlib
+*.rmeta
+*.pdb
+
+# Compiled objects and executables
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# Editor and OS noise
+.DS_Store
+*.swp

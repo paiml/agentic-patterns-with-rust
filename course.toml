@@ -1,0 +1,12 @@
+# Generated README is built from this file. Edit it, not README.md.
+#
+# The consistency gate in .github/ cross-checks README.md against this file, so
+# a hand-edit to the README that disagrees with the data below fails CI rather
+# than shipping.
+
+[course]
+slug        = "agentic-patterns-with-rust"
+number      = 5
+title       = "Agentic Patterns: Parallel Subagent ML with Rust"
+tagline     = "Code from the course on parallel subagent patterns for ML in Rust"
+description = "Course 5 of the Machine Learning in Rust specialization. This repository holds the course outline, in OUTLINE.md; worked examples arrive with the lessons."
