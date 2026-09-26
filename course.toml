@@ -9,4 +9,9 @@ slug        = "agentic-patterns-with-rust"
 number      = 5
 title       = "Agentic Patterns: Parallel Subagent ML with Rust"
 tagline     = "Code from the course on parallel subagent patterns for ML in Rust"
-description = "Course 5 of the Machine Learning in Rust specialization. This repository holds the course outline, in OUTLINE.md; worked examples arrive with the lessons."
+description = "Course 5 of the Machine Learning in Rust specialization. This repository holds the course outline, in OUTLINE.md; the recordable demos live in examples/demos."
+
+[[examples]]
+dir     = "examples/demos"
+title   = "Course 5 demos"
+summary = "Recordable demos: Rust programs with pinned inputs, machine-checked assertions and a receipt"
