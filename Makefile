@@ -1,6 +1,6 @@
 # One command a contributor runs before a pull request: `make gate`.
-# CI's required `gate` check runs the README consistency steps; the demo
-# workspace steps below need a Rust toolchain and run locally.
+# CI's required `gate` check runs the README consistency steps and
+# demos-test; fmt, clippy and xtask verify below run locally.
 
 DEMOS := examples/demos
 
