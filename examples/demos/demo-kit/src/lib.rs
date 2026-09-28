@@ -25,12 +25,3 @@ pub mod verdict;
 
 pub use manifest::DemoManifest;
 pub use verdict::{NotRunReason, Verdict};
-
-#[cfg(test)]
-mod planted_red {
-    /// Planted failure: proves the `gate` check goes red on a failing demo test.
-    #[test]
-    fn planted_red() {
-        panic!("planted: gate must go red");
-    }
-}
