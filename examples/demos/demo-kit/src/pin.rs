@@ -2,6 +2,7 @@
 //! else — a floor, a caret, a tilde, a bare version, a wildcard — is refused,
 //! because a floor lets the tool under test change without the receipt saying so.
 
+use std::cmp::Ordering;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +52,49 @@ pub fn version_from_output(tool: &str, out: &str) -> Option<String> {
     is_semver(v).then(|| v.to_string())
 }
 
+/// Semver precedence of two versions (`0.69.3 < 0.70.0-rc.1 < 0.70.0`).
+/// `None` when either side is not `MAJOR.MINOR.PATCH[-PRE]`.
+pub fn cmp_version(a: &str, b: &str) -> Option<Ordering> {
+    if !is_semver(a) || !is_semver(b) {
+        return None;
+    }
+    fn split(v: &str) -> (Vec<u64>, Option<&str>) {
+        let (core, pre) = match v.split_once('-') {
+            Some((c, p)) => (c, Some(p)),
+            None => (v, None),
+        };
+        (
+            core.split('.').filter_map(|p| p.parse().ok()).collect(),
+            pre,
+        )
+    }
+    let ((ca, pa), (cb, pb)) = (split(a), split(b));
+    Some(ca.cmp(&cb).then_with(|| match (pa, pb) {
+        (None, None) => Ordering::Equal,
+        (None, Some(_)) => Ordering::Greater,
+        (Some(_), None) => Ordering::Less,
+        (Some(x), Some(y)) => cmp_pre(x, y),
+    }))
+}
+
+/// Pre-release identifiers: numeric ones compare numerically and sort before
+/// alphanumeric ones; a shorter list that is a prefix sorts first.
+fn cmp_pre(x: &str, y: &str) -> Ordering {
+    let (xs, ys): (Vec<&str>, Vec<&str>) = (x.split('.').collect(), y.split('.').collect());
+    for (i, j) in xs.iter().zip(&ys) {
+        let o = match (i.parse::<u64>(), j.parse::<u64>()) {
+            (Ok(m), Ok(n)) => m.cmp(&n),
+            (Ok(_), Err(_)) => Ordering::Less,
+            (Err(_), Ok(_)) => Ordering::Greater,
+            (Err(_), Err(_)) => i.cmp(j),
+        };
+        if o != Ordering::Equal {
+            return o;
+        }
+    }
+    xs.len().cmp(&ys.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,5 +129,25 @@ mod tests {
             Some("1.2.11")
         );
         assert_eq!(version_from_output("apr", "garbage"), None);
+    }
+
+    #[test]
+    fn versions_order_by_semver_precedence() {
+        let ascending = [
+            "0.69.3",
+            "0.70.0-dev.d13f86934",
+            "0.70.0-rc.1",
+            "0.70.0-rc.2",
+            "0.70.0-rc.10",
+            "0.70.0",
+            "0.70.1",
+            "1.0.0",
+        ];
+        for w in ascending.windows(2) {
+            assert_eq!(cmp_version(w[0], w[1]), Some(Ordering::Less), "{w:?}");
+            assert_eq!(cmp_version(w[1], w[0]), Some(Ordering::Greater), "{w:?}");
+        }
+        assert_eq!(cmp_version("0.69.3", "0.69.3"), Some(Ordering::Equal));
+        assert_eq!(cmp_version("0.69", "0.69.3"), None);
     }
 }
