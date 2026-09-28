@@ -3,6 +3,7 @@
 //! The probe is a trait so the falsifiers can drive it with a fake tool set;
 //! [`SystemProbe`] asks the real binaries.
 
+use crate::arrival;
 use crate::manifest::DemoManifest;
 use crate::pin;
 use crate::sha;
@@ -138,8 +139,27 @@ pub fn preflight(m: &DemoManifest, base: &Path, probe: &dyn Probe) -> Vec<NotRun
         }
     }
 
+    // RMEDIA-791: a need that first ships in an unreleased apr is refused by
+    // name at this pin, whatever the probe says — the fix is a re-pin.
+    let apr_pin = m
+        .uses_apr()
+        .then(|| pin::parse_exact(&m.apr).ok())
+        .flatten();
     for need in &m.needs {
-        if !probe.available(need) {
+        let unreleased = apr_pin.as_ref().and_then(|p| {
+            arrival::pin_unreleased(
+                arrival::APR_ARRIVALS,
+                arrival::APR_LATEST_RELEASED,
+                need,
+                &p.0,
+            )
+        });
+        if let Some(since) = unreleased {
+            out.push(NotRunReason::PinUnreleased {
+                need: need.clone(),
+                since: since.into(),
+            });
+        } else if !probe.available(need) {
             out.push(NotRunReason::Refused(need.clone()));
         }
     }
@@ -387,6 +407,74 @@ resolution = "1920x1080"
         };
         let r = preflight(&manifest(""), Path::new("."), &probe);
         assert_eq!(r, vec![NotRunReason::Refused("--json-schema".into())]);
+    }
+
+    fn needs(pin: &str, needs: &str) -> DemoManifest {
+        DemoManifest {
+            apr: pin.into(),
+            needs: needs.split(',').map(str::to_string).collect(),
+            ..manifest("")
+        }
+    }
+
+    fn pin_unreleased(need: &str) -> NotRunReason {
+        NotRunReason::PinUnreleased {
+            need: need.into(),
+            since: "0.70.0-rc.1".into(),
+        }
+    }
+
+    /// RMEDIA-791 falsifier: a manifest that needs a 0.70-only verb, run at
+    /// =0.69.3, is NotRun{PinUnreleased}, never Green.
+    #[test]
+    fn rmedia791_unreleased_verb_at_old_pin_is_pin_unreleased() {
+        let m = needs("=0.69.3", "apr serve run,apr ptx-debug analyze");
+        let r = preflight(&m, Path::new("."), &FakeProbe::default());
+        assert_eq!(r, vec![pin_unreleased("apr ptx-debug analyze")]);
+        let v = crate::verdict::decide(&r, &[("exit".to_string(), true)].into());
+        assert_eq!(
+            v.to_string(),
+            "NotRun{PinUnreleased(apr ptx-debug analyze, since 0.70.0-rc.1)}"
+        );
+    }
+
+    /// PinUnreleased wins over Refused for the same need: one reason, the
+    /// one that names the fix.
+    #[test]
+    fn rmedia791_pin_unreleased_takes_precedence_over_refused() {
+        let probe = FakeProbe {
+            refused: ["apr ptx-debug".to_string(), "--json-schema".to_string()].into(),
+            ..Default::default()
+        };
+        let m = needs("=0.69.3", "apr ptx-debug,--json-schema");
+        let r = preflight(&m, Path::new("."), &probe);
+        assert_eq!(
+            r,
+            vec![
+                pin_unreleased("apr ptx-debug"),
+                NotRunReason::Refused("--json-schema".into())
+            ]
+        );
+    }
+
+    /// At a pin that has the verb, the probe decides again: available passes,
+    /// refused is the ordinary Refused.
+    #[test]
+    fn rmedia791_pin_at_since_falls_back_to_probe() {
+        let at_rc1 = FakeProbe {
+            apr: Some((declared_path("apr"), "0.70.0-rc.1".into())),
+            ..Default::default()
+        };
+        let m = needs("=0.70.0-rc.1", "apr ptx-debug");
+        assert!(preflight(&m, Path::new("."), &at_rc1).is_empty());
+        let refusing = FakeProbe {
+            refused: ["apr ptx-debug".to_string()].into(),
+            ..at_rc1
+        };
+        assert_eq!(
+            preflight(&m, Path::new("."), &refusing),
+            vec![NotRunReason::Refused("apr ptx-debug".into())]
+        );
     }
 
     /// Shaped like d08: apr and agy pinned, plus an unpinned `claude` need.

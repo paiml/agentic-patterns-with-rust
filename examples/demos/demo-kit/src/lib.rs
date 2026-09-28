@@ -5,6 +5,7 @@
 //!
 //! - [`manifest`]: `demo.toml`, the single source for test, receipt and card.
 //! - [`pin`]: exact pins only. A floor (`>=`, `^`, `~`, bare) is refused.
+//! - [`arrival`]: which apr version first has a `needs` entry.
 //! - [`sha`]: weights and fixture-tree digests.
 //! - [`preflight`]: everything that makes a demo `NotRun` before it starts.
 //! - [`serve`]: a resident server whose process group dies with its guard.
@@ -12,6 +13,7 @@
 //! - [`receipt`]: the JSON record a narration may cite, and nothing else.
 //! - [`harness`]: the shared run loop — preflight, assert, decide, receipt.
 
+pub mod arrival;
 pub mod harness;
 pub mod manifest;
 pub mod pin;

@@ -12,6 +12,10 @@ use std::fmt;
 pub enum NotRunReason {
     /// A verb or flag in `needs` is refused by the pinned tool.
     Refused(String),
+    /// A `needs` entry first ships in an apr newer than the pin that is not
+    /// released yet (see [`crate::arrival`]). Takes precedence over `Refused`
+    /// for that need: the fix is a re-pin, not a different verb.
+    PinUnreleased { need: String, since: String },
     /// The pin in demo.toml is not exact.
     PinRefused(String),
     /// The installed tool is not the pinned version.
@@ -37,6 +41,9 @@ impl fmt::Display for NotRunReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Refused(v) => write!(f, "Refused({v})"),
+            Self::PinUnreleased { need, since } => {
+                write!(f, "PinUnreleased({need}, since {since})")
+            }
             Self::PinRefused(p) => write!(f, "PinRefused({p})"),
             Self::VersionMismatch {
                 tool,
@@ -146,6 +153,32 @@ mod tests {
         );
     }
 
+    /// RMEDIA-791: the reason names the need and the version it arrives in,
+    /// in the verdict line and in the receipt JSON.
+    #[test]
+    fn pin_unreleased_display_and_receipt_form() {
+        let r = NotRunReason::PinUnreleased {
+            need: "apr ptx-debug".into(),
+            since: "0.70.0-rc.1".into(),
+        };
+        let v = decide(std::slice::from_ref(&r), &all_pass());
+        assert!(!v.is_green());
+        assert_eq!(
+            v.to_string(),
+            "NotRun{PinUnreleased(apr ptx-debug, since 0.70.0-rc.1)}"
+        );
+        assert_eq!(
+            serde_json::to_value(&v).unwrap(),
+            serde_json::json!({
+                "verdict": "NotRun",
+                "reasons": [{
+                    "reason": "PinUnreleased",
+                    "detail": { "need": "apr ptx-debug", "since": "0.70.0-rc.1" }
+                }]
+            })
+        );
+    }
+
     #[test]
     fn green_needs_assertions_and_no_refusals() {
         assert!(decide(&[], &all_pass()).is_green());
@@ -171,6 +204,10 @@ mod tests {
     fn every_reason_blocks_green() {
         let reasons = [
             NotRunReason::Refused("apr serve".into()),
+            NotRunReason::PinUnreleased {
+                need: "apr ptx-debug".into(),
+                since: "0.70.0-rc.1".into(),
+            },
             NotRunReason::PinRefused(">=0.69".into()),
             NotRunReason::VersionMismatch {
                 tool: "apr".into(),
