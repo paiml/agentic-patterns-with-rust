@@ -24,8 +24,9 @@ pub enum NotRunReason {
     WeightsMismatch { expected: String, found: String },
     /// Fixture tree hash differs from the declared one.
     FixturesMismatch { expected: String, found: String },
-    /// apr resolves to a path that is not forjar-declared (H-3).
-    UndeclaredApr(String),
+    /// A tool the demo invokes resolves on PATH to a location that is not
+    /// forjar-declared (H-3, RD-1): what would run is not what was declared.
+    UndeclaredTool { tool: String, path: String },
     /// Another job holds a GPU reservation (H-7): never wait-and-pass.
     GpuLockHeld,
     /// A tool the demo needs is not installed.
@@ -44,7 +45,7 @@ impl fmt::Display for NotRunReason {
             } => write!(f, "VersionMismatch({tool}: pinned {pinned}, found {found})"),
             Self::WeightsMismatch { .. } => write!(f, "WeightsMismatch"),
             Self::FixturesMismatch { .. } => write!(f, "FixturesMismatch"),
-            Self::UndeclaredApr(p) => write!(f, "UndeclaredApr({p})"),
+            Self::UndeclaredTool { tool, path } => write!(f, "UndeclaredTool({tool}, {path})"),
             Self::GpuLockHeld => write!(f, "GpuLockHeld"),
             Self::MissingTool(t) => write!(f, "MissingTool({t})"),
         }
@@ -123,6 +124,28 @@ mod tests {
         assert_eq!(v.to_string(), "NotRun{Refused(--json-schema)}");
     }
 
+    /// RD-1: the reason names the tool and the path it resolved to, in the
+    /// verdict line and in the receipt JSON.
+    #[test]
+    fn undeclared_tool_display_and_receipt_form() {
+        let r = NotRunReason::UndeclaredTool {
+            tool: "agy".into(),
+            path: "/home/x/.local/bin/agy".into(),
+        };
+        let v = decide(std::slice::from_ref(&r), &all_pass());
+        assert_eq!(
+            v.to_string(),
+            "NotRun{UndeclaredTool(agy, /home/x/.local/bin/agy)}"
+        );
+        assert_eq!(
+            serde_json::to_value(&r).unwrap(),
+            serde_json::json!({
+                "reason": "UndeclaredTool",
+                "detail": { "tool": "agy", "path": "/home/x/.local/bin/agy" }
+            })
+        );
+    }
+
     #[test]
     fn green_needs_assertions_and_no_refusals() {
         assert!(decide(&[], &all_pass()).is_green());
@@ -162,7 +185,10 @@ mod tests {
                 expected: "a".into(),
                 found: "b".into(),
             },
-            NotRunReason::UndeclaredApr("/home/x/apr".into()),
+            NotRunReason::UndeclaredTool {
+                tool: "agy".into(),
+                path: "/home/x/agy".into(),
+            },
             NotRunReason::GpuLockHeld,
             NotRunReason::MissingTool("agy".into()),
         ];
