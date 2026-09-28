@@ -41,6 +41,15 @@
 # find and coreutils already on the image — no package install, no third-party
 # action, no interpreter beyond the shell. A fork's code must also never reach
 # a self-hosted machine, which is the other half of why the runner is hosted.
+#
+# WHY cargo test RUNS HERE AND NOT THROUGH sovereign-ci
+#
+# The demo workspace (examples/demos) is Rust, and its falsifiers (pin,
+# UndeclaredTool, PinUnreleased) are unit tests. They run in this same
+# top-level job with the cargo already on ubuntu-latest, `--locked` so the
+# lockfile is the build. A reusable sovereign-ci workflow would report as
+# `<caller> / gate` and would put fork code on a self-hosted runner, and both
+# are ruled out above.
 name: gate
 
 on:
@@ -66,3 +75,7 @@ jobs:
 
       - name: Cross-check every README against its TOML
         run: .github/scripts/check-readme-consistency.sh
+
+      - name: Demo workspace tests
+        working-directory: examples/demos
+        run: cargo test --workspace --locked
