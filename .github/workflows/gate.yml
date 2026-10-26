@@ -1,55 +1,10 @@
-# Green Main gate — the status check this repository's branch ruleset requires.
+# Required status check: the job named `gate` at the top level of this
+# workflow. It needs every other job, so it is green only when they all are.
+# Keep that job name; renaming it blocks every pull request.
 #
-# WHY THIS EXISTS
-#
-# `main` is protected by the org ruleset "Green Main — unified gate
-# enforcement", which requires a status check whose context is EXACTLY `gate`.
-# This repository had no workflows at all, so that check was never produced,
-# so every pull request sat permanently BLOCKED and the only way anything
-# landed was an admin bypass. A rule that blocks everything and verifies
-# nothing is worse than no rule: it trains people to bypass.
-#
-# The job below is what produces that context. GitHub names a check run after
-# the job's `name:` (or its id when there is none), so the job must stay named
-# `gate` at the TOP LEVEL of this workflow. Move it under a reusable workflow
-# and it reports as `<caller> / gate`, which does not satisfy the rule.
-#
-# WHAT IT ACTUALLY VERIFIES
-#
-# .github/scripts/check-readme-consistency.sh — every generated README in this
-# repository cross-checked against the TOML file beside it, which is the file
-# it was rendered from. Read that script's header before trusting it: it is a
-# CONSISTENCY CHECK, NOT A REGENERATE-AND-DIFF. It catches the realistic
-# hand-edit (a reworded title, an added or removed table row, a deleted
-# footer, a stale link, a deleted image) because those disagree with the data.
-# It does not catch prose reworded inside a field's value in both the TOML and
-# the README at once — those agree with each other, and only running the real
-# generator would notice the README was never re-rendered.
-#
-# WHY --self-test RUNS FIRST
-#
-# The gate this workflow replaces failed by being unable to fail. So before the
-# checker judges this repository, it is made to judge eight deliberately broken
-# copies of it and one clean one, and asserts it reports each break and passes
-# the clean tree. A checker that has quietly gone blind reds this job rather
-# than waving the build through.
-#
-# WHY ubuntu-latest AND NOTHING INSTALLED ON TOP OF IT
-#
-# This repository is public and takes pull requests from forks. The job has to
-# run with no secrets, so it uses only actions/checkout and the bash, awk, sed,
-# find and coreutils already on the image — no package install, no third-party
-# action, no interpreter beyond the shell. A fork's code must also never reach
-# a self-hosted machine, which is the other half of why the runner is hosted.
-#
-# WHY cargo test RUNS HERE AND NOT THROUGH sovereign-ci
-#
-# The demo workspace (examples/demos) is Rust, and its falsifiers (pin,
-# UndeclaredTool, PinUnreleased) are unit tests. They run in this same
-# top-level job with the cargo already on ubuntu-latest, `--locked` so the
-# lockfile is the build. A reusable sovereign-ci workflow would report as
-# `<caller> / gate` and would put fork code on a self-hosted runner, and both
-# are ruled out above.
+# Every job runs on a pinned ubuntu-24.04 image with a pinned Rust toolchain
+# and no secrets, so pull requests from forks run the same checks. The weekly
+# canary workflow runs the learner build on the latest hosted images.
 name: gate
 
 on:
@@ -60,22 +15,74 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: "1.99.1"
+
 jobs:
-  # Job id and name are both `gate` because the ruleset matches that string
-  # exactly. Renaming this job silently re-blocks every pull request.
-  gate:
-    name: gate
-    runs-on: ubuntu-latest
+  readme:
+    name: readme
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      # Falsification arm. Must run BEFORE the real check.
+      # Runs before the real check: the checker must catch every deliberately
+      # broken copy of this repository and pass the clean one.
       - name: Prove the checker can still fail
         run: .github/scripts/check-readme-consistency.sh --self-test
 
       - name: Cross-check every README against its TOML
         run: .github/scripts/check-readme-consistency.sh
 
-      - name: Demo workspace tests
+  demos:
+    name: demos
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
         working-directory: examples/demos
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            examples/demos/target
+          key: cargo-demos-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('examples/demos/Cargo.lock') }}
+          restore-keys: |
+            cargo-demos-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Tests
         run: cargo test --workspace --locked
+
+      - name: Verify pins and provable contracts
+        run: cargo run -q --locked -p xtask -- verify
+
+  gate:
+    name: gate
+    needs: [readme, demos]
+    runs-on: ubuntu-24.04
+    if: always()
+    steps:
+      - name: Verify all jobs succeeded
+        run: |
+          if [ "${{ needs.readme.result }}" != "success" ] || [ "${{ needs.demos.result }}" != "success" ]; then
+            echo "::error::readme=${{ needs.readme.result }} demos=${{ needs.demos.result }}"
+            exit 1
+          fi
+          echo "all gates passed"
