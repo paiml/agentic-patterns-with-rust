@@ -73,16 +73,51 @@ jobs:
       - name: Verify pins and provable contracts
         run: cargo run -q --locked -p xtask -- verify
 
+  coverage:
+    name: coverage (report)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: examples/demos
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: llvm-tools-preview
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            examples/demos/target
+          key: cargo-coverage-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('examples/demos/Cargo.lock') }}
+          restore-keys: |
+            cargo-coverage-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.6.21
+
+      # Report mode: prints the number and passes, because line coverage is
+      # below 100%. Make it enforcing with --fail-under-lines 100 once it is.
+      - name: Line coverage (report only, below 100%)
+        run: cargo llvm-cov --workspace --locked --summary-only
+
   gate:
     name: gate
-    needs: [readme, demos]
+    needs: [readme, demos, coverage]
     runs-on: ubuntu-24.04
     if: always()
     steps:
       - name: Verify all jobs succeeded
         run: |
-          if [ "${{ needs.readme.result }}" != "success" ] || [ "${{ needs.demos.result }}" != "success" ]; then
-            echo "::error::readme=${{ needs.readme.result }} demos=${{ needs.demos.result }}"
+          if [ "${{ needs.readme.result }}" != "success" ] || [ "${{ needs.demos.result }}" != "success" ] || [ "${{ needs.coverage.result }}" != "success" ]; then
+            echo "::error::readme=${{ needs.readme.result }} demos=${{ needs.demos.result }} coverage=${{ needs.coverage.result }}"
             exit 1
           fi
           echo "all gates passed"
