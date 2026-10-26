@@ -1,0 +1,53 @@
+# Nightly line-coverage measurement. It never runs on a pull request or a push
+# and no other job depends on it. A red run opens or updates one issue.
+name: coverage-lab
+
+on:
+  schedule:
+    - cron: "41 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  RUST_TOOLCHAIN: "1.99.1"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  coverage:
+    name: coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: examples/demos
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: llvm-tools-preview
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.6.21
+
+      - name: Line coverage
+        run: cargo llvm-cov --workspace --locked --summary-only
+
+      - name: Open or update the coverage issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        working-directory: .
+        run: |
+          n=$(gh issue list --search "coverage-lab in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "Still red: $RUN_URL"
+          else
+            gh issue create --title "coverage-lab: nightly coverage run is red" --body "Nightly coverage run failed: $RUN_URL"
+          fi
